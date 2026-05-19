@@ -183,18 +183,71 @@ class WhatsAppService {
     async getStatus(libraryId) {
         const client = this.clients[libraryId];
         if (!client) {
+            // No live client — report last known state (never report CONNECTED without a live client)
             const localState = this.sessionStates[libraryId] || { status: 'DISCONNECTED', qr: null };
-            return { connected: false, state: localState.status, qrCode: localState.qr };
+            const lastStatus = localState.status;
+            // Even if local state cached CONNECTED, without a live client it is NOT connected
+            const isConnected = false;
+            return { connected: isConnected, state: lastStatus === 'CONNECTED' ? 'DISCONNECTED' : lastStatus, qrCode: localState.qr };
         }
 
         try {
             const state = await client.getState();
             const qr = this.sessionStates[libraryId] ? this.sessionStates[libraryId].qr : null;
-            return { connected: state === 'CONNECTED', state: state, qrCode: qr };
+
+            // WAState.CONNECTED is the only truly-connected value from whatsapp-web.js
+            const isConnected = state === 'CONNECTED';
+
+            // If Puppeteer says we're NOT connected, sync our local state so UI reflects it immediately
+            if (!isConnected && this.sessionStates[libraryId]) {
+                this.sessionStates[libraryId].status = state || 'DISCONNECTED';
+            }
+
+            return { connected: isConnected, state: state || 'DISCONNECTED', qrCode: qr };
         } catch (error) {
-            const localState = this.sessionStates[libraryId] || { status: 'UNKNOWN', qr: null };
-            return { connected: localState.status === 'CONNECTED', state: localState.status, qrCode: localState.qr };
+            // client.getState() threw — the browser/session is broken; treat as disconnected
+            console.warn(`[${libraryId}] getState() failed (session likely dead):`, error.message);
+            if (this.sessionStates[libraryId]) {
+                this.sessionStates[libraryId].status = 'DISCONNECTED';
+            }
+            delete this.clients[libraryId];
+            return { connected: false, state: 'DISCONNECTED', qrCode: null };
         }
+    }
+
+    async logout(libraryId) {
+        const client = this.clients[libraryId];
+
+        // 1. Try to call WhatsApp's own logout (invalidates the session server-side)
+        if (client) {
+            try {
+                await client.logout();
+            } catch (err) {
+                console.warn(`[${libraryId}] client.logout() error (non-fatal):`, err.message);
+            }
+            try {
+                await client.destroy();
+            } catch (err) {
+                console.warn(`[${libraryId}] client.destroy() error (non-fatal):`, err.message);
+            }
+            delete this.clients[libraryId];
+        }
+
+        // 2. Update in-memory state
+        this.sessionStates[libraryId] = { status: 'DISCONNECTED', qr: null };
+
+        // 3. Delete the LocalAuth session folder from disk so next initSession shows QR again
+        const sessionDir = path.join(__dirname, '../sessions', `session-${libraryId}`);
+        if (fs.existsSync(sessionDir)) {
+            try {
+                fs.rmSync(sessionDir, { recursive: true, force: true });
+                console.log(`[${libraryId}] Session folder deleted from disk.`);
+            } catch (rmErr) {
+                console.warn(`[${libraryId}] Could not delete session folder (will retry on next restart):`, rmErr.message);
+            }
+        }
+
+        return { success: true, message: 'Logged out and session cleared.' };
     }
 
     async sendMessageWithAttachment(libraryId, number, message, attachmentOptions = {}) {

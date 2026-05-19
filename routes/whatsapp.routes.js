@@ -26,6 +26,8 @@ const bulkUploadFields = upload.fields([
 router.get('/init/:libraryId', whatsAppController.init);
 router.post('/init/:libraryId', whatsAppController.init);
 router.get('/status/:libraryId', whatsAppController.status);
+router.delete('/logout/:libraryId', whatsAppController.logout);
+router.post('/logout/:libraryId', whatsAppController.logout); // fallback for clients that don't support DELETE
 
 // Single Message Endpoints
 router.post('/single-message', upload.single('file'), whatsAppController.singleMessage);
