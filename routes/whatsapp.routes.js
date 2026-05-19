@@ -29,6 +29,10 @@ router.get('/status/:libraryId', whatsAppController.status);
 router.delete('/logout/:libraryId', whatsAppController.logout);
 router.post('/logout/:libraryId', whatsAppController.logout); // fallback for clients that don't support DELETE
 
+// Kill session (destroy browser, keep disk session — reconnects without QR on next /init)
+router.delete('/kill/:libraryId', whatsAppController.kill);
+router.post('/kill/:libraryId', whatsAppController.kill); // fallback for Angular HttpClient
+
 // Single Message Endpoints
 router.post('/single-message', upload.single('file'), whatsAppController.singleMessage);
 

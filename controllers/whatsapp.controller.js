@@ -34,6 +34,16 @@ class WhatsAppController {
         }
     }
 
+    async kill(req, res) {
+        try {
+            const { libraryId } = req.params;
+            const result = await whatsAppService.kill(libraryId);
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
     async singleMessage(req, res) {
         try {
             const { libraryId, number, message, caption, attachmentUrl, attachmentBase64, attachmentMimeType, attachmentFileName } = req.body;

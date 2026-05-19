@@ -250,6 +250,30 @@ class WhatsAppService {
         return { success: true, message: 'Logged out and session cleared.' };
     }
 
+    async kill(libraryId) {
+        const client = this.clients[libraryId];
+
+        if (!client) {
+            // Nothing to kill — already dead
+            this.sessionStates[libraryId] = { status: 'DISCONNECTED', qr: null };
+            return { success: true, message: 'No active session to kill.' };
+        }
+
+        // Destroy the Puppeteer browser — does NOT wipe session files from disk.
+        // Calling initSession() after this will auto-reconnect using saved credentials (no QR needed).
+        try {
+            await client.destroy();
+        } catch (err) {
+            console.warn(`[${libraryId}] kill() destroy error (non-fatal):`, err.message);
+        }
+
+        delete this.clients[libraryId];
+        this.sessionStates[libraryId] = { status: 'DISCONNECTED', qr: null };
+
+        console.log(`[${libraryId}] Session killed (browser destroyed, disk session preserved).`);
+        return { success: true, message: 'Session killed. Call /init to reconnect without QR.' };
+    }
+
     async sendMessageWithAttachment(libraryId, number, message, attachmentOptions = {}) {
         const client = this.clients[libraryId];
         if (!client) throw new Error('Session not initialized');
